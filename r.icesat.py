@@ -2,9 +2,10 @@
 # All generic unless I mark it as something for Ecuador
 
 # DATA SOURCE
-# https://nsidc.org/data/GLA06/versions/34 -- everything
-# https://nsidc.org/data/GLA14/versions/34 -- land surface (incl. glaciers?)
+# https://nsidc.org/data/icesat/data.html -- all data
+# GLA06 (everything) and GLA14 (land surface), HDF5.
 # GLA14 -- used by Chinese researchers for Tibetan lakes
+# And so this is what I have written this code around.
 
 import h5py
 import numpy as np
