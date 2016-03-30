@@ -7,11 +7,16 @@
 # GLA14 -- used by Chinese researchers for Tibetan lakes
 # And so this is what I have written this code around.
 
+# Download HDF5 files (I use wget -r) and then use the recursive glob
+# to find all of these
+
 import h5py
 import numpy as np
-from glob import glob
+import glob
 from datetime import datetime as dt
 import os
+import fnmatch
+import shutil
 
 #########
 # INPUT #
@@ -19,10 +24,11 @@ import os
 
 # Bounding box -- Chimborazo
 w = -78.95
-e = -76.65
-s = -1.55
+e = -78.65
+s = -1.6
 n = -1.3
 
+"""
 w = -77
 e = -76
 s = -2
@@ -32,11 +38,19 @@ w = -98
 e = -89
 s = 43
 n = 50
+"""
 
+# Outname -- name of path and output .txt concatenated file
+outname = 'Chimborazo_xyzt'
+#outname = 'MinnesotaLakes'
 
-# Outpath
-outpath = 'ChimborazoForGRASS'
-
+# Utility function
+def recursive_glob(wildcard, rootdir=os.getcwd()):
+  matches = []
+  for root, dirnames, filenames in os.walk(rootdir):
+      for filename in fnmatch.filter(filenames, wildcard):
+          matches.append(os.path.join(root, filename))
+  return matches
 
 #################################
 # STEP 1: EXTRACT DATA FROM HDF #
@@ -46,17 +60,17 @@ t2000 = dt(2000,1,1) # Reference point for timestamps
 tUNIX = dt(1970,1,1)
 tOffset = (t2000 - tUNIX).total_seconds()
 
-filenames = sorted(glob('*.H5'))
+filenames = sorted(recursive_glob('*.H5'))
 
 try:
-  print 'Creating directory', outpath
-  os.mkdir(outpath)
+  print 'Creating directory', outname
+  os.mkdir(outname)
 except:
-  print 'Directory', outpath, 'exists.'
+  print 'Directory', outname, 'exists.'
 
 for filename in filenames:
 
-  print filename,
+  print os.path.split(filename)[-1],
   
   #try:
 
@@ -77,7 +91,7 @@ for filename in filenames:
 
   # Local region
   # e-lon and n-lat
-  region = (lon < ((360-e)%360)) * (lon > (360-w)%360) * (lat < n) * (lat > s)
+  region = (lon < ((360+e)%360)) * (lon > ((360+w)%360)) * (lat < n) * (lat > s)
   elevS = elev[region]
   latS = lat[region]
   lonS = lon[region]
@@ -92,29 +106,42 @@ for filename in filenames:
   
   # Keep to date -- passes are just a matter of 2-3 minutes
   
-  outname = 'ICESat_' + '%04d' %startTimeDateTime.year \
+  outfile = 'ICESat_' + '%04d' %startTimeDateTime.year \
                       + '%02d' %startTimeDateTime.month \
                       + '%02d' %startTimeDateTime.day
-  print " -->", outname
+  print " -->", outfile
 
   xyztS = np.hstack(( np.expand_dims(lonS, 2), np.expand_dims(latS, 2), \
                       np.expand_dims(elevS, 2), np.expand_dims(timeUNIXS, 2) ))
                       
-  np.savetxt(outpath + outname, xyztS, delimiter='|')
+  np.savetxt(outname + '/' + outfile, xyztS, delimiter='|')
 
   #except:
   #  print "  >> ***File must not be complete***"
   #  #os.remove(filename)
   #  #print "  >>", filename, "deleted. Try to download again."
 
+#############################################################
+# STEP 2: CONCATENATE ALL OUTPUT FILES INTO A SINGLE MASTER #
+#############################################################
+
+outfilename = outname + '.txt'
+with open(outfilename, 'wb') as outfile:
+    for filename in glob.glob(outname+'/ICESat_*'):
+        if filename == outfilename:
+            # don't want to copy the output into the output
+            continue
+        with open(filename, 'rb') as readfile:
+            shutil.copyfileobj(readfile, outfile)
 
 #################################
-# STEP 2: IMPORT INTO GRASS GIS #
+# STEP 3: IMPORT INTO GRASS GIS #
 #################################
 
 from grass import script as grass
 
-infilepaths = sorted(glob(outpath+'/*'))
+# OPTION 1: ALL PATHS
+infilepaths = sorted(glob(outname+'/*'))
 print ""
 print "GRASS import"
 print ""
@@ -127,4 +154,20 @@ for infilepath in infilepaths:
 #  #  print "  >> File already imported"
 # If too many points to register w/ topology
 #  , flags='b')
+
+# OPTION 2: ALL AT ONCE
+print ""
+print "GRASS import"
+print ""
+  infilename = outfilename
+  print infilename
+  #try:
+  grass.run_command('v.in.ascii', input=infilename, output=os.path.splitext(infilename)[0], x=1, y=2, z=3, columns="x double precision, y double precision, z double precision, tUNIX double precision", overwrite=True, quiet=True)
+#  #except:
+#  #  print "  >> File already imported"
+# If too many points to register w/ topology
+#  , flags='b')
+
+# region
+grass.run_command('g.region', flags='p', w = w, e = e, s = s, n = n)
 
